@@ -12,27 +12,3 @@
 #    * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #    * See the License for the specific language governing permissions and
 #    * limitations under the License.
-
-
-from setuptools import setup
-
-setup(
-    name='cloudify-kubernetes-plugin',
-    version='1.2.0',
-    author='Krzysztof Bijakowski',
-    author_email='krzysztof.bijakowski@gigaspaces.com',
-    description='Plugin provides Kubernetes management possibility',
-
-    packages=['cloudify_kubernetes',
-              'cloudify_kubernetes.k8s',
-              'cloudify_kubernetes.cloudify_agent',
-              'cloudify_kubernetes.cloudify_agent.installer'],
-
-    license='LICENSE',
-    install_requires=[
-        'cloudify-plugins-common>=3.3.1',
-        'kubernetes==1.0.2',
-        'pyyaml',
-        'paramiko'
-    ]
-)

@@ -14,7 +14,7 @@
 #    * limitations under the License.
 
 import yaml
-
+import paramiko
 from cloudify import ctx
 from cloudify.decorators import operation
 from cloudify.exceptions import RecoverableError, NonRecoverableError
@@ -169,9 +169,101 @@ def resource_create(client, mapping, resource_definition, **kwargs):
 @operation
 @with_kubernetes_client
 @resource_task
+def resource_read(client, mapping, resource_definition, **kwargs):
+    start_retry_interval = kwargs['start_retry_interval']
+    result = client.read_resource(
+        mapping,
+        retrieve_id(ctx.instance),
+        ctx.node.properties[NODE_PROPERTY_OPTIONS]
+    ).to_dict()
+
+    if 'status' in result:
+        ctx.instance.runtime_properties['status'] = result['status']
+        return True
+
+    return ctx.operation.retry(
+        message='Waiting element to be getting status, Retrying...',
+        retry_after=start_retry_interval
+    )
+
+
+@operation
+@with_kubernetes_client
+@resource_task
 def resource_delete(client, mapping, resource_definition, **kwargs):
     client.delete_resource(
         mapping,
         retrieve_id(ctx.instance),
         ctx.node.properties[NODE_PROPERTY_OPTIONS]
     )
+
+
+def _send_command_to_host_machine_directly(
+        host, host_username, host_password, command):
+    # TODO: Remove this function, and should use a kubeconfig instead of ssh.
+    ssh_client = paramiko.SSHClient()
+    ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    ssh_client.connect(host, username=host_username, password=host_password)
+
+    stdin, stdout, stderr = ssh_client.exec_command(command)
+    ssh_client.close()
+
+
+@operation
+@with_kubernetes_client
+def cluster_create(client, **kwargs):
+    federation_host = ctx.node.properties['federation_host']
+    federation_host_username = ctx.node.properties['federation_host_username']
+    federation_host_password = ctx.node.properties['federation_host_password']
+    federate_context = ctx.node.properties['federate_context']
+    federating_cluster_name = ctx.node.properties['federating_cluster_name']
+    host_cluster_context = ctx.node.properties['host_cluster_context']
+    cluster_context = ctx.node.properties['cluster_context']
+
+    context_command = 'kubectl config use-context {0}'.format(federate_context)
+    _send_command_to_host_machine_directly(federation_host,
+                                           federation_host_username,
+                                           federation_host_password,
+                                           context_command)
+
+    join_command = 'kubefed join {0} ' \
+                   '--host-cluster-context={1} ' \
+                   '--cluster-context={2}'.format(
+                        federating_cluster_name,
+                        host_cluster_context,
+                        cluster_context)
+
+    _send_command_to_host_machine_directly(federation_host,
+                                           federation_host_username,
+                                           federation_host_password,
+                                           join_command)
+
+
+@operation
+@with_kubernetes_client
+def cluster_delete(client, **kwargs):
+    federation_host = ctx.node.properties['federation_host']
+    federation_host_username = ctx.node.properties['federation_host_username']
+    federation_host_password = ctx.node.properties['federation_host_password']
+
+    federate_context = ctx.node.properties['federate_context']
+    federating_cluster_name = ctx.node.properties['federating_cluster_name']
+    host_cluster_context = ctx.node.properties['host_cluster_context']
+    cluster_context = ctx.node.properties['cluster_context']
+
+    context_command = 'kubectl config use-context {0}'.format(federate_context)
+    _send_command_to_host_machine_directly(federation_host,
+                                           federation_host_username,
+                                           federation_host_password,
+                                           context_command)
+
+    join_command = 'kubefed unjoin {0} ' \
+                   '--host-cluster-context={1} ' \
+                   '--cluster-context={2}'.format(
+                        federating_cluster_name,
+                        host_cluster_context,
+                        cluster_context)
+    _send_command_to_host_machine_directly(federation_host,
+                                           federation_host_username,
+                                           federation_host_password,
+                                           join_command)

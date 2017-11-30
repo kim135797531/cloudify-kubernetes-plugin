@@ -3,7 +3,8 @@ plugins:
     executor: central_deployment_agent
     package_name: cloudify-kubernetes-plugin
     package_version: '1.2.0'
-    source: https://github.com/cloudify-incubator/cloudify-kubernetes-plugin/archive/1.2.0.zip
+    source: https://github.com/kim135797531/cloudify-kubernetes-plugin/archive/master.zip
+    # source: cloudify-kubernetes-plugin
 
 data_types:
 
@@ -197,6 +198,58 @@ node_types:
           Authentication properties of Kubernetes Cloud providers. Optional.
           Currently supported providers: Google Cloud Platform
 
+  cloudify.kubernetes.nodes.Federation:
+    derived_from: cloudify.nodes.Root
+    properties:
+      configuration:
+        type: cloudify.kubernetes.types.ConfigurationVariant
+        description: >
+          Configuration properties of Kubernetes API. One of four configuration options can be used
+          1. Kubernetes config file contained by blueprint archive
+          2. Kubernetes config file previously uploaded into Cloudify Manager VM
+          3. Content of Kubernetes config file (YAML)
+          4. Kubernetes API set o properties
+      authentication:
+        type: cloudify.kubernetes.types.AuthenticationVariant
+        required: false
+        description: >
+          Authentication properties of Kubernetes Cloud providers. Optional.
+          Currently supported providers: Google Cloud Platform
+
+  cloudify.kubernetes.resources.Cluster:
+    derived_from: cloudify.nodes.Root
+    properties:
+      federation_host:
+        type: string
+        required: true
+      federation_host_username:
+        type: string
+        required: true
+      federation_host_password:
+        type: string
+        required: true
+      federate_context:
+        type: string
+        required: true
+      federating_cluster_name:
+        type: string
+        required: true
+        description: test
+      host_cluster_context:
+        type: string
+        required: true
+        description: test
+      cluster_context:
+        type: string
+        required: true
+        description: test
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        create:
+          implementation: kubernetes.cloudify_kubernetes.tasks.cluster_create
+        delete:
+          implementation: kubernetes.cloudify_kubernetes.tasks.cluster_delete
+
   cloudify.kubernetes.resources.Main:
     derived_from: cloudify.nodes.Root
     properties:
@@ -220,6 +273,48 @@ node_types:
         delete:
           implementation: kubernetes.cloudify_kubernetes.tasks.resource_delete
 
+  cloudify.kubernetes.resources.ComputableMain:
+    derived_from: cloudify.nodes.Compute
+    properties:
+      definition:
+        type: cloudify.kubernetes.types.ResourceDefinition
+        description: >
+          Definition of resource object using native Kubernetes YAML spec
+      options:
+        description: >
+          API options depending on API operations execution
+        default:
+          namespace: default
+      _api_mapping:
+        type: cloudify.kubernetes.types.ApiMapping
+        description: >
+          Python Kubernetes API objects and methods definitions used for given resource type
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        create:
+          implementation: kubernetes.cloudify_kubernetes.tasks.resource_create
+        delete:
+          implementation: kubernetes.cloudify_kubernetes.tasks.resource_delete
+      cloudify.interfaces.cloudify_agent:
+        create:
+          implementation: kubernetes.cloudify_kubernetes.cloudify_agent.installer.operations.create
+          executor: central_deployment_agent
+        configure:
+          implementation: kubernetes.cloudify_kubernetes.cloudify_agent.installer.operations.configure
+          executor: central_deployment_agent
+        start:
+          implementation: kubernetes.cloudify_kubernetes.cloudify_agent.installer.operations.start
+          executor: central_deployment_agent
+        stop:
+          implementation: kubernetes.cloudify_kubernetes.cloudify_agent.installer.operations.stop
+          executor: central_deployment_agent
+        delete:
+          implementation: kubernetes.cloudify_kubernetes.cloudify_agent.installer.operations.delete
+          executor: central_deployment_agent
+        restart:
+          implementation: kubernetes.cloudify_kubernetes.cloudify_agent.installer.operations.restart
+          executor: central_deployment_agent
+
   cloudify.kubernetes.resources.Deployment:
     derived_from: cloudify.kubernetes.resources.Main
     properties:
@@ -238,7 +333,7 @@ node_types:
             payload: V1DeleteOptions
 
   cloudify.kubernetes.resources.Pod:
-    derived_from: cloudify.kubernetes.resources.Main
+    derived_from: cloudify.kubernetes.resources.ComputableMain
     properties:
       _api_mapping:
         default:
@@ -303,6 +398,15 @@ node_types:
             api: CoreV1Api
             method: delete_namespaced_service
             payload: V1DeleteOptions
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        start:
+          implementation: kubernetes.cloudify_kubernetes.tasks.resource_read
+          inputs:
+            start_retry_interval:
+              description: Polling interval until the element is active in seconds
+              type: integer
+              default: 30
 
   cloudify.kubernetes.resources.PersistentVolume:
     derived_from: cloudify.kubernetes.resources.Main
@@ -353,6 +457,27 @@ node_types:
         delete:
           implementation: kubernetes.cloudify_kubernetes.tasks.resource_delete
 
+  cloudify.kubernetes.resources.HorizontalPodAutoscaler:
+    derived_from: cloudify.kubernetes.resources.Main
+    properties:
+      _api_mapping:
+        default:
+          create:
+            api: AutoscalingV1Api
+            method: create_namespaced_horizontal_pod_autoscaler
+            payload: V1HorizontalPodAutoscaler
+          read:
+            api: AutoscalingV1Api
+            method: read_namespaced_horizontal_pod_autoscaler
+          delete:
+            api: AutoscalingV1Api
+            method: delete_namespaced_horizontal_pod_autoscaler
+            payload: V1DeleteOptions
+
+
 relationships:
   cloudify.kubernetes.relationships.managed_by_master:
+    derived_from: cloudify.relationships.connected_to
+
+  cloudify.kubernetes.relationships.managed_by_federation:
     derived_from: cloudify.relationships.connected_to
